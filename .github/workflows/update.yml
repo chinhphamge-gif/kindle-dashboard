@@ -15,14 +15,14 @@ permissions:
   contents: read
   pages: write
   id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
+  actions: write   # để lượt này tự hẹn lượt kế tiếp
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: true
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -82,3 +82,31 @@ jobs:
       - name: Thử deploy lại
         if: steps.deploy.outcome == 'failure'
         uses: actions/deploy-pages@v4
+
+  # Lịch cron của GitHub hay trễ hàng giờ, nên mỗi lượt tự hẹn lượt kế tiếp:
+  # chờ ~8 phút (ban đêm 0–8h giờ VN: chờ tới 4h hoặc 8h) rồi gọi lại chính workflow này.
+  # Lượt mới (kể cả do cron/push) sẽ huỷ lượt đang chờ cũ, nên luôn chỉ có một chuỗi.
+  hen-luot-ke-tiep:
+    needs: build
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    concurrency:
+      group: chuoi-hen-gio
+      cancel-in-progress: true
+    steps:
+      - name: Chờ rồi gọi lượt kế tiếp
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          h=$(TZ=Asia/Ho_Chi_Minh date +%-H); m=$(TZ=Asia/Ho_Chi_Minh date +%-M)
+          if [ "$h" -lt 8 ]; then
+            if [ "$h" -lt 4 ]; then next=4; else next=8; fi
+            s=$(( (next - h) * 3600 - m * 60 ))
+          else
+            s=480
+          fi
+          echo "Chờ ${s}s"
+          sleep "$s"
+          gh workflow run update.yml -R "$GITHUB_REPOSITORY" --ref main
+
