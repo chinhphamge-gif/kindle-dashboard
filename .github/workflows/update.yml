@@ -70,5 +70,15 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+      # GitHub đôi khi chưa kịp ghi nhận artifact vừa tải lên → chờ một chút, lỗi thì thử lại 1 lần
+      - name: Chờ GitHub ghi nhận artifact
+        run: sleep 20
       - id: deploy
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - name: Chờ trước khi thử lại
+        if: steps.deploy.outcome == 'failure'
+        run: sleep 40
+      - name: Thử deploy lại
+        if: steps.deploy.outcome == 'failure'
         uses: actions/deploy-pages@v4
