@@ -35,6 +35,52 @@ const TZ = 'Asia/Ho_Chi_Minh';
 // Không dùng ScriptApp.getService().getUrl(): trong trình soạn thảo nó trả link thử /dev, GitHub không gọi được.
 const WEB_APP_URL = '';
 
+// ---- Kích GitHub vẽ lại ảnh đúng giờ (lịch cron của GitHub hay trễ hàng giờ) ----
+// Repo GitHub của dashboard, dạng 'ten-github/kindle-dashboard'.
+const GH_REPO = '';
+// Mấy phút kích một lần (Apps Script chỉ nhận 1, 5, 10, 15, 30).
+const KICK_MINUTES = 10;
+
+/**
+ * Gọi GitHub chạy workflow update.yml. Được trigger hẹn giờ gọi tự động.
+ * Cần token GitHub lưu trong Project Settings → Script Properties, tên GITHUB_TOKEN
+ * (fine-grained token, chỉ repo dashboard, quyền Actions: Read and write).
+ */
+function kick() {
+  const token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
+  if (!token || !GH_REPO) { Logger.log('Thiếu GITHUB_TOKEN (Script Properties) hoặc GH_REPO'); return; }
+  const now = new Date();
+  const h = Number(Utilities.formatDate(now, TZ, 'H')), m = Number(Utilities.formatDate(now, TZ, 'm'));
+  // Ban đêm 0–8 giờ Kindle chỉ làm mới 4 tiếng/lần → chỉ vẽ lúc 0h và 4h
+  if (h < 8 && !((h === 0 || h === 4) && m < KICK_MINUTES)) return;
+  const r = UrlFetchApp.fetch('https://api.github.com/repos/' + GH_REPO + '/actions/workflows/update.yml/dispatches', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+    payload: JSON.stringify({ ref: 'main' }),
+    muteHttpExceptions: true,
+  });
+  if (r.getResponseCode() !== 204) {
+    throw new Error('GitHub trả mã ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 200));
+  }
+  Logger.log('Đã kích GitHub vẽ lại ảnh');
+}
+
+/** Chạy 1 lần để bật hẹn giờ (chạy lại cũng không tạo trùng). */
+function installTrigger() {
+  removeTrigger();
+  ScriptApp.newTrigger('kick').timeBased().everyMinutes(KICK_MINUTES).create();
+  Logger.log('Đã bật hẹn giờ: ' + KICK_MINUTES + ' phút/lần');
+  kick();
+}
+
+/** Tắt hẹn giờ. */
+function removeTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'kick') ScriptApp.deleteTrigger(t);
+  });
+}
+
 function doGet(e) {
   if (!e || !e.parameter || e.parameter.token !== token_()) {
     return ContentService.createTextOutput('{"error":"forbidden"}').setMimeType(ContentService.MimeType.JSON);
