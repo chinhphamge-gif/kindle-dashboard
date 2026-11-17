@@ -34,12 +34,39 @@ init() {
   lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null
 }
 
+CURL_K=""      # chuyển thành "-k" nếu Kindle đời cũ không kiểm được chứng chỉ HTTPS (thiếu CA mới)
+NET_ERR=""
+
+wifi_state() { lipc-get-prop com.lab126.wifid cmState 2>/dev/null; }
+
+net_try() {
+  # 1 lần thử: lấy header của ảnh. -m 20 vì máy đời cũ bắt tay TLS chậm.
+  code=$(curl -s $CURL_K -m 20 -o /dev/null -w '%{http_code}' -I "$IMAGE_URL" 2>/dev/null)
+  rc=$?
+  NET_ERR="curl rc=$rc http=$code wifi=$(wifi_state)"
+  if [ -z "$CURL_K" ]; then
+    case $rc in
+      35|51|58|60|77|83|90|91)   # lỗi chứng chỉ/TLS → thử lại không kiểm chứng chỉ
+        CURL_K="-k"
+        log "Lỗi chứng chỉ HTTPS (curl rc=$rc) → dùng chế độ không kiểm chứng chỉ"
+        return 1 ;;
+    esac
+  fi
+  [ $rc -eq 0 ] && [ "$code" != "000" ]
+}
+
 wait_net() {
-  # chờ tối đa 45 giây đến khi có Internet
+  # chờ Wi-Fi kết nối (tối đa 60 giây), rồi thử gọi máy chủ ảnh tối đa 6 lần
   i=0
-  while [ $i -lt 45 ]; do
-    curl -s -m 5 -o /dev/null -I "$IMAGE_URL" && return 0
+  while [ $i -lt 60 ]; do
+    [ "$(wifi_state)" = "CONNECTED" ] && break
     sleep 1
+    i=$((i + 1))
+  done
+  i=0
+  while [ $i -lt 6 ]; do
+    net_try && return 0
+    sleep 3
     i=$((i + 1))
   done
   return 1
@@ -48,15 +75,16 @@ wait_net() {
 fetch_and_show() {
   wifi 1
   if ! wait_net; then
-    log "Không có mạng"
+    log "Không có mạng ($NET_ERR)"
     wifi 0; sleep 15; wifi 1          # thử bật lại Wi-Fi một lần
-    wait_net || { eips 1 1 "Khong co Wi-Fi - se thu lai sau"; return 1; }
+    wait_net || { log "Vẫn không có mạng ($NET_ERR)"; eips 1 1 "Khong co Wi-Fi - se thu lai sau"; return 1; }
   fi
   rm -f "$IMG"
   # thêm ?t=... để không bị bộ nhớ đệm CDN trả ảnh cũ
-  curl -s -L -m 60 -o "$IMG" "$IMAGE_URL?t=$(date +%s)"
-  if [ ! -s "$IMG" ]; then
-    log "Tải ảnh thất bại"
+  code=$(curl -s $CURL_K -L -m 90 -o "$IMG" -w '%{http_code}' "$IMAGE_URL?t=$(date +%s)" 2>/dev/null)
+  rc=$?
+  if [ $rc -ne 0 ] || [ "$code" != "200" ] || [ ! -s "$IMG" ]; then
+    log "Tải ảnh thất bại (curl rc=$rc http=$code)"
     eips 1 1 "Tai anh that bai - se thu lai sau"
     return 1
   fi
