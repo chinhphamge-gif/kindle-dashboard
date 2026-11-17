@@ -36,6 +36,7 @@ init() {
 
 CURL_K=""      # chuyển thành "-k" nếu Kindle đời cũ không kiểm được chứng chỉ HTTPS (thiếu CA mới)
 NET_ERR=""
+LAST_SUM=""
 
 wifi_state() { lipc-get-prop com.lab126.wifid cmState 2>/dev/null; }
 
@@ -88,6 +89,13 @@ fetch_and_show() {
     eips 1 1 "Tai anh that bai - se thu lai sau"
     return 1
   fi
+  # ảnh không đổi so với lần trước thì không vẽ lại (đỡ nháy màn hình, đỡ tốn pin)
+  sum=$(md5sum "$IMG" 2>/dev/null | cut -d' ' -f1)
+  if [ -n "$sum" ] && [ "$sum" = "$LAST_SUM" ]; then
+    log "Ảnh chưa đổi (pin $(battery)%)"
+    return 0
+  fi
+  LAST_SUM="$sum"
   eips -c
   sleep 1
   eips -g "$IMG"
