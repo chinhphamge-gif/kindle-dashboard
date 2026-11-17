@@ -7,7 +7,7 @@
  *  2. Không cần tự đặt TOKEN: script tự sinh một chuỗi bí mật và lưu trong Script Properties.
  *  3. Services (+) → thêm "Google Tasks API".
  *  4. Deploy → New deployment → Web app; Execute as: Me; Who has access: Anyone → Deploy, cho phép quyền.
- *  5. Chạy hàm showDataUrl → copy dòng DATA_URL trong Execution log → dán vào GitHub secret DATA_URL.
+ *  5. Dán Web app URL vào WEB_APP_URL bên dưới, Save, rồi chạy hàm showDataUrl → copy dòng DATA_URL trong Execution log → dán vào GitHub secret DATA_URL.
  */
 /** Chuỗi bí mật: tự sinh ở lần gọi đầu, lưu trong Script Properties (không nằm trong mã nguồn). */
 function token_() {
@@ -22,10 +22,7 @@ function token_() {
 
 /** Chạy SAU khi Deploy: in DATA_URL ra Execution log để copy. Không gửi dòng này cho ai. */
 function showDataUrl() {
-  let url = '';
-  try { url = ScriptApp.getService().getUrl() || ''; } catch (err) {}
-  url = url.replace(/\/dev$/, '/exec');
-  Logger.log('DATA_URL: ' + (url || '<Web app URL>') + '?token=' + token_());
+  Logger.log('DATA_URL: ' + (WEB_APP_URL || '<Web app URL>') + '?token=' + token_());
 }
 
 /** Lỡ lộ link thì chạy hàm này để đổi chuỗi bí mật, rồi chạy lại showDataUrl. */
@@ -34,6 +31,9 @@ function resetToken() {
   showDataUrl();
 }
 const TZ = 'Asia/Ho_Chi_Minh';
+// Dán Web app URL (Deploy → Manage deployments, dạng https://script.google.com/macros/s/.../exec) vào đây rồi Save.
+// Không dùng ScriptApp.getService().getUrl(): trong trình soạn thảo nó trả link thử /dev, GitHub không gọi được.
+const WEB_APP_URL = '';
 
 function doGet(e) {
   if (!e || !e.parameter || e.parameter.token !== token_()) {
