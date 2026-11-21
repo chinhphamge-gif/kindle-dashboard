@@ -221,8 +221,11 @@ def fetch_appscript(url: str, today: date) -> tuple[list[Event], list[Task]]:
     data = r.json()
     if "error" in data:
         raise SystemExit(f"Apps Script báo lỗi: {data['error']} (kiểm tra token trong DATA_URL)")
-    global CLAUDE_USAGE
+    global CLAUDE_USAGE, CLAUDE_TASKS
     CLAUDE_USAGE = data.get("claude")
+    CLAUDE_TASKS = data.get("claude_tasks")
+    # chỉ in số lượng, không in nội dung (log GitHub Actions của repo công khai ai cũng xem được)
+    print("Claude Code:", len((CLAUDE_TASKS or {}).get("items") or []), "phiên")
     if CLAUDE_USAGE:
         fb = _find_fable(CLAUDE_USAGE)
         print("Fable:", f"{fb.get('utilization')}%" if fb else "không thấy trong số liệu")
@@ -230,6 +233,7 @@ def fetch_appscript(url: str, today: date) -> tuple[list[Event], list[Task]]:
 
 
 # ---------------------------------------------------------------- mức dùng Claude
+CLAUDE_TASKS: dict | None = None   # {"fetched_at", "items": [{"title", "result", "project", "at"}]} — từ mac/recent_tasks.js
 CLAUDE_USAGE: dict | None = None   # {"five_hour": {"utilization", "resets_at"}, "seven_day": {...}, "fetched_at"}
 THU_NGAN = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
 
@@ -451,14 +455,17 @@ def _claude_fetched(usage, now):
         return None, False
 
 
-def draw_claude_full(d, y, usage, now):
+def draw_claude_full(d, y, usage, now, name="Claude · tuần này"):
     """Bố cục đầy đủ: Tuần này to nhất ở trên; hàng dưới Phiên 5 giờ | Fable. Trả về y mới."""
     if not usage:
-        d.text((MARGIN, y), "Claude: chưa có số liệu từ máy Mac (xem Phần 5 trong README).", font=font("Regular", 24), fill=MID)
-        return y + 46
+        f = font("Regular", 26)
+        for ln in wrap(d, "Chưa có số liệu mức dùng. Chạy mac/install.sh trên máy Mac đã đăng nhập Claude Code (Phần 5 README).", f, W - 2 * MARGIN, 2):
+            d.text((MARGIN, y), ln, font=f, fill=MID)
+            y += 36
+        return y + 10
     ft, stale = _claude_fetched(usage, now)
     alert = f"SỐ LIỆU CŨ · {ft:%H:%M %d/%m}" if stale else ""
-    y = _claude_block(d, y, "Claude · tuần này", usage.get("seven_day") or {}, now, timedelta(days=7), k=0.8, alert=alert)
+    y = _claude_block(d, y, name, usage.get("seven_day") or {}, now, timedelta(days=7), k=0.8, alert=alert)
     y += 2
     gap = 44
     col_w = (W - 2 * MARGIN - gap) / 2
@@ -717,7 +724,204 @@ def due_tag(t: Task, today: date):
     return f"{t.due.day}/{t.due.month}"
 
 
+
+# ================================================================ BỐ CỤC "claude": mức dùng + việc gần đây + danh ngôn
+# Danh ngôn đổi mỗi ngày. Muốn dùng câu riêng: tạo file quotes.txt trong repo, mỗi dòng "Câu nói | Tác giả".
+QUOTES = [
+    ("Hành trình vạn dặm bắt đầu từ một bước chân.", "Lão Tử, Đạo Đức Kinh"),
+    ("Không có việc gì khó, chỉ sợ lòng không bền. Đào núi và lấp biển, quyết chí ắt làm nên.", "Hồ Chí Minh, 1951"),
+    ("Học mà không nghĩ thì mờ mịt, nghĩ mà không học thì nguy hại.", "Khổng Tử, Luận Ngữ"),
+    ("Có công mài sắt, có ngày nên kim.", "Tục ngữ Việt Nam"),
+    ("Đời sống của pháp luật không phải là logic, mà là kinh nghiệm.", "Oliver Wendell Holmes Jr., The Common Law, 1881"),
+    ("Chúng ta là những gì ta lặp đi lặp lại. Vì thế, sự xuất sắc không phải là một hành động, mà là một thói quen.", "Will Durant, diễn giải Aristotle"),
+    ("Kiến tha lâu cũng đầy tổ.", "Tục ngữ Việt Nam"),
+    ("Ba người cùng đi, ắt có người là thầy ta.", "Khổng Tử, Luận Ngữ"),
+    ("Bất công ở bất cứ đâu là mối đe doạ đối với công lý ở mọi nơi.", "Martin Luther King Jr., Thư từ nhà tù Birmingham, 1963"),
+    ("Vì lợi ích mười năm thì phải trồng cây, vì lợi ích trăm năm thì phải trồng người.", "Hồ Chí Minh, 1958"),
+    ("Nước chảy đá mòn.", "Tục ngữ Việt Nam"),
+    ("Công lý không chỉ phải được thực thi, mà còn phải được thấy rõ là đang được thực thi.", "Lord Hewart, R v Sussex Justices, 1924"),
+    ("Một cây làm chẳng nên non, ba cây chụm lại nên hòn núi cao.", "Ca dao Việt Nam"),
+    ("Biết người biết ta, trăm trận không nguy.", "Tôn Tử, Binh pháp"),
+    ("Ngọc không mài không thành đồ quý; người không học không biết đạo lý.", "Lễ Ký, thiên Học Ký"),
+    ("Đi một ngày đàng, học một sàng khôn.", "Tục ngữ Việt Nam"),
+    ("Thất bại là mẹ thành công.", "Tục ngữ"),
+    ("Có chí thì nên.", "Tục ngữ Việt Nam"),
+]
+
+
+def quote_of_day(today: date) -> tuple[str, str]:
+    qs = QUOTES
+    custom = Path(__file__).parent / "quotes.txt"
+    if custom.exists():
+        rows = [l.split("|", 1) for l in custom.read_text(encoding="utf-8").splitlines() if l.strip() and not l.startswith("#")]
+        rows = [(a.strip(), b.strip()) for a, b in (r if len(r) == 2 else (r[0], "") for r in rows) if a.strip()]
+        qs = rows or qs
+    return qs[today.toordinal() % len(qs)]
+
+
+def _ago(iso: str | None, now: datetime) -> str:
+    try:
+        t = datetime.fromisoformat((iso or "").replace("Z", "+00:00")).astimezone(TZ)
+    except ValueError:
+        return ""
+    mins = int((now - t).total_seconds() // 60)
+    if mins < 1:
+        return "vừa xong"
+    if mins < 60:
+        return f"{mins} phút trước"
+    if t.date() == now.date():
+        return f"{mins // 60} giờ trước"
+    if t.date() == now.date() - timedelta(days=1):
+        return f"hôm qua {t:%H:%M}"
+    if (now.date() - t.date()).days < 7:
+        return f"{THU_NGAN[t.weekday()]} {t:%H:%M}"
+    return f"{t.day}/{t.month}"
+
+
+def _rect(d, x0, y0, x1, y1, fill):
+    d.polygon([(x0, y0), (x1, y0), (x1, y1), (x0, y1)], fill=fill)
+
+
+def _label(d, y, text, right=""):
+    """Nhãn mục nhỏ, chữ in hoa xám + vạch mảnh. Trả về y mới."""
+    f = font("Bold", 22)
+    d.text((MARGIN, y), text.upper(), font=f, fill=MID)
+    if right:
+        fr = font("Regular", 22)
+        d.text((W - MARGIN - d.textlength(right, font=fr), y), right, font=fr, fill=MID)
+    d.line([(MARGIN, y + 36), (W - MARGIN, y + 36)], fill=PALE, width=2)
+    return y + 54
+
+
+def _draw_quote(d, y_bottom, today):
+    """Khung danh ngôn ghim ở đáy (nền xám nhạt, vạch đen bên trái). Trả về y đỉnh khung."""
+    text, author = quote_of_day(today)
+    x0, x1 = MARGIN, W - MARGIN
+    tx, pad = x0 + 40, 30
+    fq = font("Medium", 30)
+    lines = wrap(d, f"“{text}”", fq, x1 - pad - tx, max_lines=4)
+    h = 60 + len(lines) * 43 + (44 if author else 6) + 18
+    y0 = y_bottom - h
+    d.rounded_rectangle([x0, y0, x1, y_bottom], radius=16, fill=236)
+    _rect(d, x0 + 16, y0 + 22, x0 + 22, y_bottom - 22, BLACK)
+    d.text((tx, y0 + 22), "DANH NGÔN HÔM NAY", font=font("Bold", 20), fill=MID)
+    y = y0 + 58
+    for ln in lines:
+        d.text((tx, y), ln, font=fq, fill=BLACK)
+        y += 43
+    if author:
+        fa = font("SemiBold", 22)
+        a = fit(d, "— " + author, fa, x1 - pad - tx)
+        d.text((x1 - pad - d.textlength(a, font=fa), y + 10), a, font=fa, fill=DARK)
+    return y0
+
+
+def _draw_tasks(d, y, limit, now):
+    """Danh sách phiên Claude Code gần đây. Mỗi mục: tên việc (đậm, 1 dòng) · thời gian + dự án · 1–2 dòng kết quả."""
+    data = CLAUDE_TASKS or {}
+    items = data.get("items") or []
+    right = ""
+    try:
+        ft = datetime.fromisoformat(data["fetched_at"].replace("Z", "+00:00")).astimezone(TZ)
+        right = (f"SỐ LIỆU CŨ · {ft:%H:%M %d/%m}" if (now - ft).total_seconds() > 7200 else f"{len(items)} phiên gần nhất")
+    except (KeyError, TypeError, ValueError, AttributeError):
+        pass
+    y = _label(d, y, "Việc gần đây · Claude Code", right)
+    if not items:
+        f = font("Regular", 26)
+        msg = ("Chưa có phiên Claude Code nào được gửi lên." if CLAUDE_TASKS else
+               "Chưa có dữ liệu. Chạy mac/install.sh trên Mac để gửi các phiên Claude Code lên đây.")
+        for ln in wrap(d, msg, f, W - 2 * MARGIN, 3):
+            d.text((MARGIN, y), ln, font=f, fill=MID)
+            y += 36
+        return y
+    ft_title, fm, fr = font("SemiBold", 29), font("Medium", 21), font("Regular", 24)
+    tx = MARGIN + 24
+    tw = W - MARGIN - tx
+    TITLE_H, META_H, LINE_H, GAP = 40, 30, 32, 24
+    more_h = 34
+
+    def height(n):
+        return TITLE_H + META_H + n * LINE_H
+
+    # bố trí trước: ưu tiên hiện nhiều việc; thiếu chỗ thì rút kết quả còn 1 dòng (từ việc cũ nhất trở lên)
+    wrapped = [wrap(d, it.get("result") or "", fr, tw, 2) if it.get("result") else [] for it in items]
+    avail = limit - y
+
+    def total(k, lines):
+        t = sum(height(len(lines[i])) for i in range(k)) + GAP * max(0, k - 1)
+        return t + (more_h + GAP if k < len(items) else 0)
+
+    k = len(items)
+    while k > 1:
+        lines = [list(w) for w in wrapped]
+        for i in range(k - 1, -1, -1):
+            if total(k, lines) <= avail:
+                break
+            lines[i] = lines[i][:1]
+        if total(k, lines) <= avail:
+            break
+        k -= 1
+    else:
+        lines = [list(w) for w in wrapped]
+        if total(1, lines) > avail:
+            lines[0] = lines[0][:1]
+    if k == 1 and total(1, lines) > avail:
+        lines[0] = lines[0][:1]
+
+    for i in range(k):
+        it = items[i]
+        h = height(len(lines[i]))
+        _rect(d, MARGIN, y + 6, MARGIN + 6, y + h - 4, BLACK if i == 0 else LIGHT)
+        d.text((tx, y), fit(d, it.get("title") or "(không tên)", ft_title, tw), font=ft_title, fill=BLACK)
+        meta = " · ".join(x for x in (_ago(it.get("at"), now), it.get("project") or "") if x)
+        d.text((tx, y + TITLE_H), fit(d, meta, fm, tw), font=fm, fill=MID)
+        yy = y + TITLE_H + META_H
+        for ln in lines[i]:
+            d.text((tx, yy), ln, font=fr, fill=DARK)
+            yy += LINE_H
+        y += h
+        if i < k - 1:
+            d.line([(tx, y + GAP / 2), (W - MARGIN, y + GAP / 2)], fill=PALE, width=2)
+        y += GAP
+    if k < len(items):
+        d.text((tx, y), f"+ {len(items) - k} phiên khác", font=fm, fill=MID)
+        y += more_h
+    return y
+
+
+def render_claude_screen(now: datetime) -> Image.Image:
+    today = now.date()
+    img = Image.new("L", (PW, PH), WHITE)
+    d = ScaledDraw(img)
+
+    # ---- đầu trang: dải đen
+    hb = 92
+    _rect(d, 0, 0, W, hb, BLACK)
+    d.text((MARGIN, hb / 2), TITLE.upper(), font=font("Bold", 40), fill=WHITE, anchor="lm")
+    dt = f"{THU[today.weekday()]}, {today.day}/{today.month}"
+    d.text((W - MARGIN, hb / 2), dt, font=font("SemiBold", 30), fill=WHITE, anchor="rm")
+
+    # ---- mức sử dụng
+    y = hb + 28
+    ft, stale = _claude_fetched(CLAUDE_USAGE, now) if CLAUDE_USAGE else (None, False)
+    y = _label(d, y, "Mức sử dụng", f"số liệu lúc {ft:%H:%M}" if ft and not stale else "")
+    y = draw_claude_full(d, y + 4, CLAUDE_USAGE, now, name="Tuần này")
+    y += 16
+
+    # ---- chân trang + danh ngôn (ghim đáy), việc gần đây lấp phần giữa
+    footer_y = H - 50
+    q_top = _draw_quote(d, footer_y - 20, today)
+    _draw_tasks(d, y, q_top - 24, now)
+
+    d.line([(MARGIN, footer_y), (W - MARGIN, footer_y)], fill=LIGHT, width=2)
+    d.text((MARGIN, footer_y + 12), f"Cập nhật {now:%H:%M %d/%m}", font=font("Regular", 22), fill=MID)
+    return img
+
+
 def render(events: list[Event], tasks: list[Task], now: datetime, weather: Weather | None = None) -> Image.Image:
+    if LAYOUT == "claude":
+        return render_claude_screen(now)
     from lunar import solar_to_lunar, year_name
 
     today, tomorrow = now.date(), now.date() + timedelta(days=1)
@@ -905,8 +1109,9 @@ def main():
         sample = json.loads(Path(args.sample).read_text(encoding="utf-8"))
         w = sample.get("weather")
         weather = Weather(**w) if w else None
-        global CLAUDE_USAGE
+        global CLAUDE_USAGE, CLAUDE_TASKS
         CLAUDE_USAGE = sample.get("claude")
+        CLAUDE_TASKS = sample.get("claude_tasks")
     else:
         if os.environ.get("DATA_URL"):
             events, tasks = fetch_appscript(os.environ["DATA_URL"], now.date())

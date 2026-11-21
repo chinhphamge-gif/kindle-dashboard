@@ -106,5 +106,40 @@
         "resets_at": "2026-11-09T02:00:00Z"
       }
     ]
+  },
+  "claude_tasks": {
+    "fetched_at": "2026-11-06T03:25:00Z",
+    "items": [
+      {
+        "title": "Chuẩn hoá footnote bài báo quyền bề mặt theo thể lệ DCPL",
+        "result": "Hoàn tất: 42 footnote đã chuẩn hoá theo Phụ lục 2; 3 nguồn còn thiếu số trang được đánh dấu để bổ sung trước khi gửi phản biện.",
+        "project": "bai-bao-quyen-be-mat",
+        "at": "2026-11-06T03:05:00Z"
+      },
+      {
+        "title": "Sửa lỗi render.py khi Open-Meteo không trả thời tiết",
+        "result": "Đã sửa: đầu trang hiện \"Chưa có thời tiết\" thay vì lỗi. Chạy thử 3 trường hợp đều ra ảnh đúng; đã đẩy lên GitHub.",
+        "project": "Kindle",
+        "at": "2026-11-06T01:40:00Z"
+      },
+      {
+        "title": "Rà soát minh chứng kiểm định chương trình LKD, tiêu chuẩn 3",
+        "result": "Đối chiếu 27 minh chứng: 22 đạt, 4 cần bổ sung bản ký, 1 trùng mã. Đã lập bảng đề xuất sửa cho từng mục.",
+        "project": "kiem-dinh-LKD",
+        "at": "2026-11-05T09:15:00Z"
+      },
+      {
+        "title": "Tạo bảng so sánh nghĩa vụ chủ thể dữ liệu: Luật 91/2025/QH15 và GDPR",
+        "result": "Bảng 14 tiêu chí kèm trích dẫn điều khoản; đánh dấu 3 điểm Luật Việt Nam chưa quy định rõ.",
+        "project": "bai-bao-chu-the-du-lieu",
+        "at": "2026-11-04T14:30:00Z"
+      },
+      {
+        "title": "Viết script xuất danh sách công bố khoa học sang định dạng Harvard",
+        "result": "Xuất 19 công bố, kiểm tra DOI tự động; 2 mục thiếu số trang.",
+        "project": "cv",
+        "at": "2026-11-03T02:00:00Z"
+      }
+    ]
   }
 }

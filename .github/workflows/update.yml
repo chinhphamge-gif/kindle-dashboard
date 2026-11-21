@@ -48,7 +48,7 @@ jobs:
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
           DASH_SKIP_CALENDARS: ${{ vars.DASH_SKIP_CALENDARS }}
-          DASH_LAYOUT: ${{ vars.DASH_LAYOUT || 'daydu' }}   # daydu (mặc định: thời tiết + Claude to + việc + lịch) / lich / claude
+          DASH_LAYOUT: ${{ vars.DASH_LAYOUT || 'claude' }}   # claude (mặc định: mức dùng + việc gần đây + danh ngôn) / daydu / lich
           # Điểm ảnh màn hình Kindle — Paperwhite 3: 1072 x 1448
           DASH_W: "1072"
           DASH_H: "1448"

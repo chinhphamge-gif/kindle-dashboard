@@ -2,7 +2,14 @@
 # Cài job lấy mức dùng Claude trên Mac mini: chạy 10 phút/lần bằng launchd.
 # Cách dùng:  bash install.sh
 set -e
-DIR="$(cd "$(dirname "$0")" && pwd)"
+SRC="$(cd "$(dirname "$0")" && pwd)"
+# macOS chặn tác vụ chạy ngầm (launchd) đọc Desktop/Documents/Downloads,
+# nên chép script ra một thư mục riêng trong thư mục nhà rồi chạy từ đó.
+DIR="$HOME/kindle-dashboard-mac"
+mkdir -p "$DIR"
+if [ "$SRC" != "$DIR" ]; then
+  cp "$SRC/claude_usage.sh" "$SRC/recent_tasks.js" "$DIR/"
+fi
 chmod +x "$DIR/claude_usage.sh"
 
 if [ ! -s "$HOME/.kindle-dashboard-url" ]; then

@@ -94,6 +94,15 @@ function doPost(e) {
     return ContentService.createTextOutput('{"error":"forbidden"}').setMimeType(ContentService.MimeType.JSON);
   }
   const body = JSON.parse(e.postData.contents);
+  const props = PropertiesService.getScriptProperties();
+  // Danh sách phiên Claude Code gần đây (mac/recent_tasks.js) → lưu riêng
+  if (Array.isArray(body.kindle_tasks)) {
+    const items = body.kindle_tasks.slice(0, 8);
+    let s = JSON.stringify({ fetched_at: new Date().toISOString(), items: items });
+    while (s.length > 8500 && items.length) { items.pop(); s = JSON.stringify({ fetched_at: new Date().toISOString(), items: items }); }
+    props.setProperty('claude_tasks', s);
+  }
+  delete body.kindle_tasks;
   // Giữ mọi mục có % sử dụng (five_hour, seven_day, Fable, ...) + danh sách tên mục để dò lỗi
   const keep = { fetched_at: new Date().toISOString(), bucket_keys: Object.keys(body) };
   Object.keys(body).forEach(function (k) {
@@ -106,7 +115,10 @@ function doPost(e) {
   const raw = {};
   Object.keys(body).forEach(function (k) { if (body[k] !== null) raw[k] = body[k]; });
   keep.raw = JSON.stringify(raw).slice(0, 6000);
-  PropertiesService.getScriptProperties().setProperty('claude_usage', JSON.stringify(keep));
+  // Chỉ ghi đè mức dùng khi lần này thật sự có số liệu (Mac lỗi mạng/token thì giữ số cũ, màn hình tự báo "số liệu cũ")
+  if (Object.keys(keep).some(function (k) { return keep[k] && typeof keep[k].utilization === 'number'; })) {
+    props.setProperty('claude_usage', JSON.stringify(keep));
+  }
   return ContentService.createTextOutput('{"ok":true}').setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -151,8 +163,12 @@ function collect_() {
     } while (pageToken);
   });
 
-  const claudeRaw = PropertiesService.getScriptProperties().getProperty('claude_usage');
-  return { generated: new Date().toISOString(), events: events, tasks: tasks, claude: claudeRaw ? JSON.parse(claudeRaw) : null };
+  const props = PropertiesService.getScriptProperties();
+  const claudeRaw = props.getProperty('claude_usage');
+  const tasksRaw = props.getProperty('claude_tasks');
+  return { generated: new Date().toISOString(), events: events, tasks: tasks,
+           claude: claudeRaw ? JSON.parse(claudeRaw) : null,
+           claude_tasks: tasksRaw ? JSON.parse(tasksRaw) : null };
 }
 
 /** Bấm Run hàm này trong trình soạn thảo để kiểm tra (xem kết quả ở Execution log). */

@@ -30,7 +30,7 @@ Trong bộ này có:
 | `setup_github.sh` | Script tự tạo repo GitHub và cài mọi thứ (Phần 2) |
 | `render.py`, `lunar.py`, `.github/` | Code vẽ ảnh dashboard, chạy trên GitHub |
 | `kindle/` | File chép vào Kindle (Phần 3) |
-| `mac/` | Chỉ dùng cho phần mức dùng Claude (Phần 5) |
+| `mac/` | Gửi mức dùng Claude + việc gần đây từ Mac (Phần 5) |
 
 ---
 
@@ -158,40 +158,38 @@ Hầu hết tuỳ chỉnh nằm trong file `.github/workflows/update.yml` trên 
 
 ---
 
-## Phần 5 (tuỳ chọn): Hiện mức dùng Claude
+## Phần 5: Mức dùng Claude + việc gần đây (Claude Code)
 
-Phần này dành cho người **dùng gói Claude Pro/Max** và **có một chiếc Mac luôn bật**. Mac sẽ đọc mức dùng (phiên 5 giờ + giới hạn tuần) 10 phút/lần, gửi lên Apps Script, dashboard hiện thành số % cỡ lớn kèm thanh tiến độ.
+Bố cục mặc định (`claude`) gồm: **mức dùng Claude** (Tuần này cỡ lớn, Phiên 5 giờ, Fable) · **việc gần đây**: 3–5 phiên Claude Code mới nhất, mỗi phiên một dòng tên việc + 1–2 dòng tóm tắt kết quả · **danh ngôn hôm nay** (đổi mỗi ngày). Dữ liệu do một chiếc Mac luôn bật gửi lên 10 phút/lần.
 
-> Mức dùng được lấy qua một địa chỉ nội bộ chưa công bố của Claude, có thể ngừng hoạt động bất cứ lúc nào. Coi như tính năng cho vui.
+> Mức dùng lấy qua một địa chỉ nội bộ chưa công bố của Claude, có thể ngừng hoạt động bất cứ lúc nào.
+> "Việc gần đây" chỉ gồm các phiên **Claude Code trên chiếc Mac đó** (đọc từ `~/.claude/projects`), không gồm cuộc trò chuyện trên claude.ai hay ứng dụng Claude.
+
+**Riêng tư.** Tên việc và tóm tắt kết quả được gửi lên Apps Script của bạn và vẽ vào ảnh trên GitHub Pages, ở đường dẫn bí mật (ai biết đường dẫn mới xem được). Script đã tự xoá URL và khối code, nhưng tên việc vẫn có thể chứa tên khách hàng, vụ việc. Muốn ẩn một dự án: ghi đoạn tên thư mục của nó vào `~/.kindle-dashboard-exclude`, mỗi dòng một mục, ví dụ:
+```bash
+echo "khach-hang" >> ~/.kindle-dashboard-exclude
+```
 
 1. Trên Mac, mở Terminal kiểm tra Claude Code: `claude --version`. Chưa có thì cài:
    ```bash
    curl -fsSL https://claude.ai/install.sh | bash
    ```
    Mở tab Terminal mới, gõ `claude`, đăng nhập bằng tài khoản Claude, xong gõ `/exit`.
-2. Chép thư mục **`mac/`** trong bộ này vào thư mục nhà, đổi tên thành `kindle-dashboard-mac`. Hoặc tải từ repo của bạn (thay `<tên-github>` và `<tên-repo>`):
-   ```bash
-   mkdir -p ~/kindle-dashboard-mac && cd ~/kindle-dashboard-mac
-   for f in claude_usage.sh install.sh; do curl -fsSL -o "$f" "https://raw.githubusercontent.com/<tên-github>/<tên-repo>/main/mac/$f"; done
-   ```
-3. Lưu DATA_URL vào máy: copy DATA_URL vào clipboard, rồi chạy lệnh dưới (lệnh không in token ra màn hình):
+2. Lưu DATA_URL vào máy: copy DATA_URL vào clipboard (Apps Script → chạy hàm `showDataUrl` → copy trong Execution log), rồi chạy lệnh dưới (lệnh không in token ra màn hình):
    ```bash
    pbpaste | tr -d ' \n\r' > ~/.kindle-dashboard-url && chmod 600 ~/.kindle-dashboard-url
    ```
-4. Cài job chạy ngầm:
+3. Cài job chạy ngầm (script tự chép mình sang `~/kindle-dashboard-mac`, vì macOS chặn tác vụ chạy ngầm đọc thư mục Desktop):
    ```bash
-   bash ~/kindle-dashboard-mac/install.sh
+   bash ~/Desktop/Kindle/mac/install.sh
    ```
    Khi macOS hỏi quyền truy cập *"Claude Code-credentials"*: nhập mật khẩu Mac rồi bấm **Always Allow** (đừng chỉ bấm Allow).
-5. Kiểm tra: `tail -3 ~/kindle-dashboard-mac/claude_usage.log` có dòng `OK {"five_hour":...` là được.
-6. Bố cục mặc định `daydu` đã có sẵn mục Claude: **Tuần này** to nhất ở trên, hàng dưới là **Phiên 5 giờ** và **Fable**, vẫn giữ thời tiết + AQI, việc và lịch. Không cần làm gì thêm.
-   (Tuỳ chọn) Bố cục chỉ nhấn Claude, bỏ thời tiết: tab **Variables** tạo `DASH_LAYOUT` = `claude`. Hoặc chạy lệnh:
-   ```bash
-   gh variable set DASH_LAYOUT --body claude -R <tên-github>/<tên-repo>
-   ```
-   Bố cục này bỏ phần ngày/thời tiết ở đầu, thay bằng mục Claude cỡ lớn. Bố cục cũ (thời tiết to, Claude 2 thanh nhỏ): `DASH_LAYOUT` = `lich`. Quay lại mặc định: `daydu`.
-   - Đổi tiêu đề: sửa `DASH_TITLE` trong `update.yml` (ví dụ `"Claude của Lan"`).
-   - Thêm logo cạnh tiêu đề: upload một ảnh tên `logo.png` (nên là PNG nền trong suốt) vào thư mục gốc repo.
+4. Kiểm tra: `tail -3 ~/kindle-dashboard-mac/claude_usage.log` có dòng `OK (mức dùng: HTTP 200, 5 việc)` là được.
+5. Apps Script phải là bản có nhận "việc gần đây" (từ 21/11/2026): dán `apps_script.gs` mới vào dự án → **Save** → **Deploy → Manage deployments → ✏️ → Version: New version → Deploy**. Link Web app giữ nguyên.
+
+Đổi bố cục: tab **Variables** của repo tạo `DASH_LAYOUT` = `daydu` (thời tiết + Claude + việc cần làm + lịch) hoặc `lich` (bố cục lịch cũ). Bỏ biến đi là về mặc định `claude`.
+- Đổi tiêu đề trên dải đen: sửa `DASH_TITLE` trong `update.yml`.
+- Dùng danh ngôn riêng: tạo file `quotes.txt` ở thư mục gốc repo, mỗi dòng `Câu nói | Tác giả`.
 
 Để Mac không làm gián đoạn: **System Settings → Energy** bật *Prevent automatic sleeping* và *Start up automatically after a power failure*; **Users & Groups** bật tự đăng nhập.
 
