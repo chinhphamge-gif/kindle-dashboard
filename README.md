@@ -195,19 +195,9 @@ echo "khach-hang" >> ~/.kindle-dashboard-exclude
 
 ---
 
-## Phần 6: Cho ảnh cập nhật đúng giờ (nên làm)
+## Phần 6: Ảnh cập nhật đều đặn
 
-Lịch tự động (cron) của GitHub chỉ là "cố gắng hết mức": thực tế có khi vài tiếng mới chạy một lượt, nên ảnh trên Kindle bị cũ. Cách chắc chắn là để Apps Script (Google chạy hẹn giờ rất đều) kích GitHub vẽ lại ảnh **10 phút/lần**.
-
-1. **Tạo token GitHub**: https://github.com/settings/personal-access-tokens/new
-   - *Repository access*: **Only select repositories** → chọn repo dashboard.
-   - *Permissions → Repository permissions → Actions*: **Read and write**. Không cấp quyền nào khác.
-   - *Expiration*: tuỳ bạn (hết hạn thì tạo lại và thay ở bước 2). Bấm **Generate token**, copy token.
-2. **Lưu token vào Apps Script**: mở dự án Kindle Dashboard → bánh răng **Project Settings** → cuối trang **Script Properties** → **Add script property**: tên `GITHUB_TOKEN`, giá trị là token vừa copy → **Save**.
-3. Trong `Code.gs`, điền `GH_REPO` (ví dụ `'ten-github/kindle-dashboard'`) → **Save**.
-4. Chọn hàm **`installTrigger`** → **Run** → cho phép thêm quyền khi Google hỏi. Execution log ghi "Đã kích GitHub vẽ lại ảnh" là xong.
-
-Kiểm tra: tab **Actions** của repo sẽ có lượt chạy mới khoảng 10 phút/lần (8h–24h; ban đêm chỉ 0h và 4h). Muốn tắt: chạy hàm `removeTrigger`.
+Lịch tự động (cron) của GitHub hay trễ hàng giờ, nên workflow được viết để **mỗi lượt tự hẹn lượt kế tiếp** sau khoảng 8 phút (ban đêm 0–8h chỉ chạy lúc 4h và 8h). Không cần cài thêm gì. Nếu chuỗi bị đứt (GitHub sự cố), vào tab **Actions** → **Cập nhật dashboard Kindle** → **Run workflow** để nối lại; lịch cron vẫn là lưới an toàn.
 
 ---
 
