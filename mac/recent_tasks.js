@@ -100,7 +100,7 @@ function collect(files, read, exclude) {
   files.forEach(function (f) {
     var txt;
     try { txt = read(f.path); } catch (e) { return; }
-    if (!txt) return;
+    if (typeof txt !== 'string' || !txt) return;
     var s = parseSession(txt, summaries);
     s.mtime = f.mtime;
     sessions.push(s);
@@ -138,8 +138,10 @@ function run() {
     return a ? ObjC.deepUnwrap(a) || [] : [];
   }
   function read(p) {
+    if (!fm.fileExistsAtPath(p)) return '';
     var s = $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8StringEncoding, null);
-    return s ? ObjC.unwrap(s) : '';
+    var v = s ? ObjC.unwrap(s) : '';
+    return typeof v === 'string' ? v : '';   // file thiếu / không đọc được → chuỗi rỗng
   }
 
   var files = [];
@@ -155,7 +157,7 @@ function run() {
     });
   });
 
-  var exclude = read(home + '/.kindle-dashboard-exclude').split('\n')
+  var exclude = String(read(home + '/.kindle-dashboard-exclude') || '').split('\n')
                   .map(function (x) { return x.trim(); }).filter(Boolean);
   return JSON.stringify(collect(files, read, exclude));
 }
