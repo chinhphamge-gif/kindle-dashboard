@@ -9,6 +9,7 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG="$DIR/claude_usage.log"
 URL_FILE="$HOME/.kindle-dashboard-url"   # chứa DATA_URL (link Web app + ?token=...), chmod 600
 STAMP="$DIR/.last_refresh"
+BACKOFF="$DIR/.usage_backoff"     # bị 429 thì tạm ngừng gọi mức dùng một thời gian
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$LOG"; tail -n 500 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"; }
 
@@ -23,8 +24,10 @@ get_token() {
   osascript -l JavaScript -e 'function run(a){return JSON.parse(a[0]).claudeAiOauth.accessToken}' "$creds" 2>/dev/null
 }
 
+UA="claude-code/$( (claude --version 2>/dev/null || echo 2.0.0) | awk '{print $1}')"
 fetch_usage() {
-  curl -s -m 20 -w '\n%{http_code}' \
+  curl -s -m 20 -D "$DIR/.last_headers" -w '\n%{http_code}' \
+    -H "User-Agent: $UA" \
     -H "Authorization: Bearer $1" \
     -H "anthropic-beta: oauth-2025-04-20" \
     -H "Content-Type: application/json" \
@@ -37,6 +40,10 @@ case "$TASKS" in \[*) ;; *) log "Không đọc được phiên Claude Code"; TAS
 
 CODE=""; BODY=""
 TOKEN="$(get_token)" || log "Không đọc được token Claude Code (đã đăng nhập Claude Code chưa?)"
+if [ -f "$BACKOFF" ] && [ "$(date +%s)" -lt "$(cat "$BACKOFF" 2>/dev/null || echo 0)" ]; then
+  log "Đang tạm ngừng gọi mức dùng (bị 429) đến $(date -r "$(cat "$BACKOFF")" '+%H:%M')"
+  TOKEN=""; CODE="tạm ngừng"
+fi
 if [ -n "$TOKEN" ]; then
   RESP="$(fetch_usage "$TOKEN")"
   CODE="${RESP##*$'\n'}"; BODY="${RESP%$'\n'*}"
@@ -54,7 +61,15 @@ if [ -n "$TOKEN" ] && [ "$CODE" = "401" ]; then
   fi
 fi
 
-if [ "$CODE" != "200" ]; then
+if [ "$CODE" = "429" ]; then
+  RA="$(grep -i '^retry-after:' "$DIR/.last_headers" 2>/dev/null | tr -dc '0-9')"
+  WAIT=$(( ${RA:-0} > 1800 ? ${RA:-0} : 1800 ))          # tối thiểu 30 phút
+  echo $(( $(date +%s) + WAIT )) > "$BACKOFF"
+fi
+if [ "$CODE" = "200" ]; then
+  rm -f "$BACKOFF"
+else
+  [ -n "$BODY" ] && [ "$BODY" != "{}" ] && log "Phản hồi: $(echo "$BODY" | tr -d '\n' | cut -c1-200)"
   log "Lấy mức dùng thất bại (HTTP ${CODE:-không gọi được}) → chỉ gửi danh sách việc"
   BODY='{}'
 fi
