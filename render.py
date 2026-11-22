@@ -90,6 +90,21 @@ class ScaledDraw:
     def rounded_rectangle(self, xy, **kw):
         self._d.rounded_rectangle(self._xy(xy), **self._kw(kw))
 
+    def mascot(self, name, x, y, size, anchor="lt"):
+        """Dán hình PsyDuckky (assets/psyduckky/<name>.png, thang xám + alpha) vừa khung size×size.
+        anchor: l/r/m theo ngang + t/b/m theo dọc. Trả về (rộng, cao) logic; (0, 0) nếu thiếu file."""
+        p = Path(__file__).parent / "assets" / "psyduckky" / f"{name}.png"
+        if not p.exists():
+            return 0, 0
+        im = Image.open(p).convert("LA")
+        k = size * SCALE / max(im.size)
+        im = im.resize((max(1, round(im.width * k)), max(1, round(im.height * k))), Image.LANCZOS)
+        w, h = im.width / SCALE, im.height / SCALE
+        x -= {"l": 0, "m": w / 2, "r": w}[anchor[0]]
+        y -= {"t": 0, "m": h / 2, "b": h}[anchor[1]]
+        self._img.paste(im.getchannel("L"), (round(x * SCALE), round(y * SCALE)), im.getchannel("A"))
+        return w, h
+
 
 # ---------------------------------------------------------------- dữ liệu
 @dataclass
@@ -794,25 +809,29 @@ def _label(d, y, text, right=""):
 
 
 def _draw_quote(d, y_bottom, today):
-    """Khung danh ngôn ghim ở đáy (nền xám nhạt, vạch đen bên trái). Trả về y đỉnh khung."""
+    """Khung danh ngôn ghim ở đáy: nền xám nhạt, vạch đen bên trái, PsyDuckky bên phải. Trả về y đỉnh khung."""
     text, author = quote_of_day(today)
     x0, x1 = MARGIN, W - MARGIN
+    face = ("glasses", "pharaoh")[today.toordinal() % 2]
+    msize = 136
     tx, pad = x0 + 40, 30
+    tx1 = x1 - msize - 18          # chừa chỗ cho PsyDuckky
     fq = font("Medium", 30)
-    lines = wrap(d, f"“{text}”", fq, x1 - pad - tx, max_lines=4)
-    h = 60 + len(lines) * 43 + (44 if author else 6) + 18
+    lines = wrap(d, f"“{text}”", fq, tx1 - tx, max_lines=4)
+    h = max(60 + len(lines) * 43 + (44 if author else 6) + 18, msize + 26)
     y0 = y_bottom - h
     d.rounded_rectangle([x0, y0, x1, y_bottom], radius=16, fill=236)
     _rect(d, x0 + 16, y0 + 22, x0 + 22, y_bottom - 22, BLACK)
     d.text((tx, y0 + 22), "DANH NGÔN HÔM NAY", font=font("Bold", 20), fill=MID)
+    d.mascot(face, x1 - 12, y_bottom - 4, msize, anchor="rb")
     y = y0 + 58
     for ln in lines:
         d.text((tx, y), ln, font=fq, fill=BLACK)
         y += 43
     if author:
         fa = font("SemiBold", 22)
-        a = fit(d, "— " + author, fa, x1 - pad - tx)
-        d.text((x1 - pad - d.textlength(a, font=fa), y + 10), a, font=fa, fill=DARK)
+        a = fit(d, "— " + author, fa, tx1 - tx)
+        d.text((tx1 - d.textlength(a, font=fa), y + 10), a, font=fa, fill=DARK)
     return y0
 
 
@@ -831,10 +850,12 @@ def _draw_tasks(d, y, limit, now):
         f = font("Regular", 26)
         msg = ("Chưa có phiên Claude Code nào được gửi lên." if CLAUDE_TASKS else
                "Chưa có dữ liệu. Chạy mac/install.sh trên Mac để gửi các phiên Claude Code lên đây.")
-        for ln in wrap(d, msg, f, W - 2 * MARGIN, 3):
-            d.text((MARGIN, y), ln, font=f, fill=MID)
-            y += 36
-        return y
+        aw, _ = d.mascot("astronaut", MARGIN, y + 4, 130)
+        yy = y + 30
+        for ln in wrap(d, msg, f, W - 2 * MARGIN - aw - 24, 3):
+            d.text((MARGIN + aw + 24, yy), ln, font=f, fill=MID)
+            yy += 36
+        return max(yy, y + 140)
     ft_title, fm, fr = font("SemiBold", 29), font("Medium", 21), font("Regular", 24)
     tx = MARGIN + 24
     tw = W - MARGIN - tx
@@ -890,32 +911,96 @@ def _draw_tasks(d, y, limit, now):
     return y
 
 
+def _mood(now: datetime) -> tuple[str, str]:
+    """Chọn hình PsyDuckky + lời thoại theo trạng thái thực của số liệu. → (tên hình, câu)."""
+    u = CLAUDE_USAGE or {}
+    wk = u.get("seven_day") or {}
+    pct = wk.get("utilization")
+    ft, stale = _claude_fetched(u, now) if u else (None, False)
+    items = (CLAUDE_TASKS or {}).get("items") or []
+    done_today = 0
+    for it in items:
+        try:
+            if datetime.fromisoformat(it["at"].replace("Z", "+00:00")).astimezone(TZ).date() == now.date():
+                done_today += 1
+        except (KeyError, TypeError, ValueError, AttributeError):
+            pass
+    if now.hour >= 23 or now.hour < 6:
+        return "sleep", "Khuya rồi. Nghỉ thôi, mai làm tiếp."
+    if not u or pct is None:
+        return "hero", "Chưa có số liệu mức dùng. Kiểm tra máy Mac và Claude Code nhé."
+    if stale:
+        return "confused", f"Số liệu dừng từ {ft:%H:%M %d/%m}. Mở Claude Code trên Mac để cập nhật."
+    _, reset_at = _remaining(wk.get("resets_at"), now)
+    if pct >= 100:
+        when = f"{THU_NGAN[reset_at.weekday()]} {reset_at:%H:%M}" if reset_at else "kỳ sau"
+        return "panic", f"Hết hạn mức tuần. Chờ đặt lại {when}."
+    if pct >= 80:
+        return "dizzy", "Sắp chạm trần tuần. Để dành cho việc quan trọng."
+    if done_today >= 3:
+        return "stars", f"Hôm nay đã xong {done_today} việc. Quá đỉnh!"
+    elapsed = None
+    if reset_at:
+        elapsed = min(max(1 - (reset_at - now) / timedelta(days=7), 0), 1) * 100
+    if elapsed is not None and pct > elapsed + 15:
+        return "blanket", "Đang dùng nhanh hơn nhịp tuần. Thong thả một chút."
+    if pct < 50:
+        return "thumbs", "Hạn mức còn rộng. Cứ làm tiếp!"
+    return "hero", "Đúng nhịp tuần. Giữ phong độ nhé!"
+
+
+def _draw_hero(d, now: datetime) -> int:
+    """Đầu trang: PsyDuckky bên trái, bên phải là ngày + bong bóng lời thoại. Trả về y đáy."""
+    today = now.date()
+    face, say = _mood(now)
+    top, size = 18, 184
+    d.mascot(face, MARGIN - 6, top + size / 2 + 4, size, anchor="lm")
+    bx0, bx1 = MARGIN + size + 26, W - MARGIN
+    # dòng nhãn + ngày
+    d.text((bx0, top + 2), (TITLE + " · PsyDuckky").upper(), font=font("Bold", 20), fill=MID)
+    d.text((bx0, top + 28), f"{THU[today.weekday()]}, {today.day} tháng {today.month}",
+           font=font("Bold", 44), fill=BLACK)
+    # bong bóng lời thoại, đuôi chỉ sang trái về phía PsyDuckky
+    fs = font("SemiBold", 28)
+    lines = wrap(d, say, fs, bx1 - bx0 - 44, 2)
+    by0 = top + 98
+    by1 = by0 + 26 + len(lines) * 38
+    d.rounded_rectangle([bx0, by0, bx1, by1], radius=22, outline=BLACK, width=4)
+    ty = (by0 + by1) / 2
+    d.polygon([(bx0 + 1, ty - 13), (bx0 - 24, ty + 2), (bx0 + 1, ty + 13)], fill=BLACK)
+    yy = by0 + 13
+    for ln in lines:
+        d.text((bx0 + 22, yy), ln, font=fs, fill=BLACK)
+        yy += 38
+    y = max(top + size + 14, by1 + 18)
+    d.line([(MARGIN, y), (W - MARGIN, y)], fill=BLACK, width=6)
+    return y + 22
+
+
 def render_claude_screen(now: datetime) -> Image.Image:
     today = now.date()
     img = Image.new("L", (PW, PH), WHITE)
     d = ScaledDraw(img)
 
-    # ---- đầu trang: dải đen
-    hb = 92
-    _rect(d, 0, 0, W, hb, BLACK)
-    d.text((MARGIN, hb / 2), TITLE.upper(), font=font("Bold", 40), fill=WHITE, anchor="lm")
-    dt = f"{THU[today.weekday()]}, {today.day}/{today.month}"
-    d.text((W - MARGIN, hb / 2), dt, font=font("SemiBold", 30), fill=WHITE, anchor="rm")
+    # ---- đầu trang: PsyDuckky + ngày + lời thoại
+    y = _draw_hero(d, now)
 
     # ---- mức sử dụng
-    y = hb + 28
     ft, stale = _claude_fetched(CLAUDE_USAGE, now) if CLAUDE_USAGE else (None, False)
     y = _label(d, y, "Mức sử dụng", f"số liệu lúc {ft:%H:%M}" if ft and not stale else "")
     y = draw_claude_full(d, y + 4, CLAUDE_USAGE, now, name="Tuần này")
-    y += 16
+    y += 12
 
     # ---- chân trang + danh ngôn (ghim đáy), việc gần đây lấp phần giữa
-    footer_y = H - 50
-    q_top = _draw_quote(d, footer_y - 20, today)
-    _draw_tasks(d, y, q_top - 24, now)
+    footer_y = H - 46
+    q_top = _draw_quote(d, footer_y - 18, today)
+    _draw_tasks(d, y, q_top - 22, now)
 
     d.line([(MARGIN, footer_y), (W - MARGIN, footer_y)], fill=LIGHT, width=2)
-    d.text((MARGIN, footer_y + 12), f"Cập nhật {now:%H:%M %d/%m}", font=font("Regular", 22), fill=MID)
+    fz = font("Regular", 22)
+    d.text((MARGIN, footer_y + 10), f"Cập nhật {now:%H:%M %d/%m}", font=fz, fill=MID)
+    tag = "tự làm mới ~15 phút"
+    d.text((W - MARGIN - d.textlength(tag, font=fz), footer_y + 10), tag, font=fz, fill=MID)
     return img
 
 
