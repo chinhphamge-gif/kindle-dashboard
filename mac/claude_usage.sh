@@ -53,8 +53,15 @@ fi
 if [ -n "$TOKEN" ] && [ "$CODE" = "401" ]; then
   if [ ! -f "$STAMP" ] || [ $(( $(date +%s) - $(stat -f %m "$STAMP") )) -gt 3600 ]; then
     touch "$STAMP"
-    log "Token hết hạn, làm mới bằng claude -p"
-    claude -p "ok" --max-turns 1 >/dev/null 2>&1
+    CLAUDE_BIN="$(command -v claude 2>/dev/null)"
+    [ -n "$CLAUDE_BIN" ] || CLAUDE_BIN="$(ls -1 "$HOME/.claude/local/claude" "$HOME/.local/bin/claude" /opt/homebrew/bin/claude /usr/local/bin/claude "$HOME"/.nvm/versions/node/*/bin/claude "$HOME/.npm-global/bin/claude" 2>/dev/null | head -1)"
+    if [ -z "$CLAUDE_BIN" ]; then
+      log "Token hết hạn, nhưng không tìm thấy lệnh claude để làm mới"
+    else
+      log "Token hết hạn, làm mới bằng $CLAUDE_BIN -p"
+      OUT="$(cd "$DIR" && "$CLAUDE_BIN" -p "ok" --max-turns 1 2>&1)"; RC=$?
+      log "claude -p xong (rc=$RC) $(printf '%s' "$OUT" | tr -d '\n' | cut -c1-160)"
+    fi
     TOKEN="$(get_token)"
     RESP="$(fetch_usage "$TOKEN")"
     CODE="${RESP##*$'\n'}"; BODY="${RESP%$'\n'*}"
